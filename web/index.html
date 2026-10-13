@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ArcStocks · Stock exposure with USDC on Arc</title>
+<link rel="icon" type="image/svg+xml" href="logo-mark.svg" />
+<style>
+  :root {
+    --bg: #0b0d12; --panel: #12151c; --line: #222733; --text: #e7eaf0; --muted: #8a93a6;
+    --accent: #4f8cff; --up: #22c55e; --down: #ef4444; --warn: #f5b942;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; border-bottom: 1px solid var(--line); }
+  .brand { display: block; height: 32px; width: auto; }
+  button { font: inherit; border: 0; border-radius: 8px; padding: 9px 14px; cursor: pointer; background: var(--accent); color: white; font-weight: 600; }
+  button.ghost { background: transparent; border: 1px solid var(--line); color: var(--text); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  main { max-width: 1080px; margin: 0 auto; padding: 24px; display: grid; gap: 20px; grid-template-columns: 1fr 340px; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+  .panel h2 { margin: 0; padding: 14px 16px; font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; border-bottom: 1px solid var(--line); }
+  .notice { grid-column: 1 / -1; padding: 10px 14px; border: 1px solid #4a3b16; background: #1d1810; color: var(--warn); border-radius: 10px; font-size: 13px; }
+  .stats { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  @media (max-width: 860px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+  .stat { padding: 14px 16px; }
+  .stat .k { color: var(--muted); font-size: 12px; }
+  .stat .v { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 12px 16px; text-align: right; font-variant-numeric: tabular-nums; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  th:first-child, td:first-child { text-align: left; }
+  tbody tr { border-top: 1px solid var(--line); cursor: pointer; }
+  tbody tr:hover, tbody tr.sel { background: #171b25; }
+  .tick { font-weight: 650; }
+  .sub { color: var(--muted); font-size: 12px; }
+  .trade { padding: 16px; display: grid; gap: 12px; }
+  .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .tabs button { background: transparent; border: 1px solid var(--line); color: var(--muted); }
+  .tabs button.on.buy { background: var(--up); border-color: var(--up); color: #04120a; }
+  .tabs button.on.sell { background: var(--down); border-color: var(--down); color: white; }
+  label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px; }
+  input { width: 100%; font: inherit; font-size: 18px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: #0d1016; color: var(--text); font-variant-numeric: tabular-nums; }
+  .row { display: flex; justify-content: space-between; color: var(--muted); font-size: 13px; }
+  .row b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+  #status { font-size: 13px; color: var(--muted); min-height: 20px; word-break: break-all; }
+  #status a { color: var(--accent); }
+  footer { max-width: 1080px; margin: 0 auto; padding: 0 24px 32px; color: var(--muted); font-size: 12px; }
+  footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <img class="brand" src="logo.svg" alt="ArcStocks" height="32" />
+  <button id="connect">Connect wallet</button>
+</header>
+
+<main>
+  <div class="notice">Beta on Arc Mainnet. Tokens are <b>synthetic USDC-settled price exposure</b>, not shares or securities. Small trade caps apply. Use only amounts you can afford to lose.</div>
+
+  <div class="stats">
+    <div class="panel stat"><div class="k">Your portfolio</div><div class="v" id="pv">–</div></div>
+    <div class="panel stat"><div class="k">Your USDC</div><div class="v" id="ub">–</div></div>
+    <div class="panel stat"><div class="k">Market reserve</div><div class="v" id="rs">–</div></div>
+    <div class="panel stat"><div class="k">Collateral ratio</div><div class="v" id="cr">–</div></div>
+  </div>
+
+  <section class="panel">
+    <h2>Markets</h2>
+    <table>
+      <thead><tr><th>Stock</th><th>Price</th><th>Last print</th><th>You hold</th><th>Value</th></tr></thead>
+      <tbody id="rows"><tr><td colspan="5" class="sub">Loading…</td></tr></tbody>
+    </table>
+  </section>
+
+  <aside class="panel">
+    <h2 id="tradeTitle">Trade</h2>
+    <div class="trade">
+      <div class="tabs">
+        <button id="tabBuy" class="on buy">Buy</button>
+        <button id="tabSell" class="sell">Sell</button>
+      </div>
+      <div>
+        <label id="amtLabel">Amount (USDC)</label>
+        <input id="amt" inputmode="decimal" placeholder="0.00" />
+      </div>
+      <div class="row"><span>You receive</span><b id="qOut">–</b></div>
+      <div class="row"><span>Fee</span><b id="qFee">–</b></div>
+      <div class="row"><span>Max per trade</span><b id="qCap">–</b></div>
+      <button id="go" disabled>Connect wallet</button>
+      <div id="status"></div>
+    </div>
+  </aside>
+</main>
+
+<footer>
+  Prices: US market quotes relayed on-chain by the ArcStocks keeper. Settlement in native USDC on Arc.
+  <span id="links"></span>
+</footer>
+
+<script type="module">
+import {
+  createPublicClient, createWalletClient, custom, http, defineChain,
+  formatUnits, parseUnits, hexToString, maxUint256,
+} from "https://esm.sh/viem@2.21.0";
+import CONFIG from "./config.js";
+
+const arc = defineChain({
+  id: 5042, name: "Arc", nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
+  rpcUrls: { default: { http: [CONFIG.rpc] } },
+  blockExplorers: { default: { name: "Arc Explorer", url: CONFIG.explorer } },
+});
+
+const marketAbi = [
+  { type: "function", name: "allSymbols", stateMutability: "view", inputs: [], outputs: [{ type: "bytes32[]" }] },
+  { type: "function", name: "tokenOf", stateMutability: "view", inputs: [{ type: "bytes32" }], outputs: [{ type: "address" }] },
+  { type: "function", name: "oracle", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
+  { type: "function", name: "feeBps", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "maxTradeUsdc", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "liabilities", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "quoteBuy", stateMutability: "view", inputs: [{ type: "bytes32" }, { type: "uint256" }], outputs: [{ type: "uint256" }, { type: "uint256" }] },
+  { type: "function", name: "quoteSell", stateMutability: "view", inputs: [{ type: "bytes32" }, { type: "uint256" }], outputs: [{ type: "uint256" }, { type: "uint256" }] },
+  { type: "function", name: "buy", stateMutability: "nonpayable", inputs: [{ type: "bytes32" }, { type: "uint256" }, { type: "uint256" }], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "sell", stateMutability: "nonpayable", inputs: [{ type: "bytes32" }, { type: "uint256" }, { type: "uint256" }], outputs: [{ type: "uint256" }] },
+];
+const oracleAbi = [
+  { type: "function", name: "quotes", stateMutability: "view", inputs: [{ type: "bytes32" }], outputs: [{ type: "uint128" }, { type: "uint64" }, { type: "uint64" }] },
+];
+const erc20Abi = [
+  { type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "allowance", stateMutability: "view", inputs: [{ type: "address" }, { type: "address" }], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "approve", stateMutability: "nonpayable", inputs: [{ type: "address" }, { type: "uint256" }], outputs: [{ type: "bool" }] },
+  { type: "function", name: "name", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+];
+
+const pub = createPublicClient({ chain: arc, transport: http(CONFIG.rpc) });
+let wallet, account;
+let state = { stocks: [], sel: 0, side: "buy", feeBps: 30n, maxTrade: 0n, oracle: null };
+const $ = (id) => document.getElementById(id);
+const usd = (v, d = 2) => "$" + Number(v).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+const ago = (t) => { const s = Math.floor(Date.now() / 1000) - Number(t); return s < 90 ? `${s}s ago` : s < 5400 ? `${Math.round(s / 60)}m ago` : s < 129600 ? `${Math.round(s / 3600)}h ago` : `${Math.round(s / 86400)}d ago`; };
+const sym = (b) => hexToString(b, { size: 32 }).replace(/\0/g, "");
+const read = (address, abi, functionName, args = []) => pub.readContract({ address, abi, functionName, args });
+
+$("links").innerHTML = ` · <a href="${CONFIG.explorer}/address/${CONFIG.market}" target="_blank">Market contract</a> · <a href="${CONFIG.repo}" target="_blank">Source</a>`;
+
+async function load() {
+  const [symbols, oracle, feeBps, maxTrade] = await Promise.all([
+    read(CONFIG.market, marketAbi, "allSymbols"), read(CONFIG.market, marketAbi, "oracle"),
+    read(CONFIG.market, marketAbi, "feeBps"), read(CONFIG.market, marketAbi, "maxTradeUsdc"),
+  ]);
+  Object.assign(state, { oracle, feeBps, maxTrade });
+  state.stocks = await Promise.all(symbols.map(async (s) => {
+    const token = await read(CONFIG.market, marketAbi, "tokenOf", [s]);
+    const [name, q] = await Promise.all([read(token, erc20Abi, "name"), read(oracle, oracleAbi, "quotes", [s])]);
+    return { id: s, ticker: sym(s), token, name: name.replace("Arc Synthetic ", ""), price: q[0], updatedAt: q[1], sourceTime: q[2], bal: 0n };
+  }));
+  await refresh();
+}
+
+async function refresh() {
+  const [reserve, liab] = await Promise.all([
+    read(CONFIG.usdc, erc20Abi, "balanceOf", [CONFIG.market]),
+    read(CONFIG.market, marketAbi, "liabilities").catch(() => 0n),
+  ]);
+  $("rs").textContent = usd(formatUnits(reserve, 6));
+  $("cr").textContent = liab === 0n ? "∞" : (Number(reserve * 10000n / liab) / 100).toFixed(0) + "%";
+  for (const s of state.stocks) {
+    const q = await read(state.oracle, oracleAbi, "quotes", [s.id]);
+    [s.price, s.updatedAt, s.sourceTime] = q;
+    s.bal = account ? await read(s.token, erc20Abi, "balanceOf", [account]) : 0n;
+  }
+  if (account) $("ub").textContent = usd(formatUnits(await read(CONFIG.usdc, erc20Abi, "balanceOf", [account]), 6));
+  render();
+}
+
+function render() {
+  let total = 0;
+  $("rows").innerHTML = state.stocks.map((s, i) => {
+    const price = Number(formatUnits(s.price, 8));
+    const held = Number(formatUnits(s.bal, 18));
+    total += held * price;
+    return `<tr data-i="${i}" class="${i === state.sel ? "sel" : ""}">
+      <td><div class="tick">${s.ticker}</div><div class="sub">${s.name}</div></td>
+      <td>${usd(price)}</td><td class="sub">${s.sourceTime ? ago(s.sourceTime) : "–"}</td>
+      <td>${held ? held.toFixed(4) : "–"}</td><td>${held ? usd(held * price) : "–"}</td></tr>`;
+  }).join("");
+  $("rows").querySelectorAll("tr").forEach((tr) => tr.onclick = () => { state.sel = +tr.dataset.i; render(); quote(); });
+  $("pv").textContent = account ? usd(total) : "–";
+  const s = state.stocks[state.sel];
+  $("tradeTitle").textContent = s ? `${state.side === "buy" ? "Buy" : "Sell"} ${s.ticker}` : "Trade";
+  $("amtLabel").textContent = state.side === "buy" ? "Amount (USDC)" : `Amount (a${s?.ticker ?? ""})`;
+  $("qCap").textContent = state.side === "buy" ? usd(formatUnits(state.maxTrade, 6), 0) : "No cap";
+  $("go").disabled = !account;
+  $("go").textContent = !account ? "Connect wallet" : state.side === "buy" ? "Buy" : "Sell";
+}
+
+function amount() {
+  const v = $("amt").value.trim();
+  if (!v || isNaN(+v) || +v <= 0) return 0n;
+  try { return parseUnits(v, state.side === "buy" ? 6 : 18); } catch { return 0n; }
+}
+
+async function quote() {
+  const s = state.stocks[state.sel], a = amount();
+  if (!s || !a) { $("qOut").textContent = $("qFee").textContent = "–"; return; }
+  if (state.side === "buy") {
+    const [out, fee] = await read(CONFIG.market, marketAbi, "quoteBuy", [s.id, a]);
+    $("qOut").textContent = `${Number(formatUnits(out, 18)).toFixed(6)} a${s.ticker}`;
+    $("qFee").textContent = usd(formatUnits(fee, 6), 4);
+  } else {
+    const [out, fee] = await read(CONFIG.market, marketAbi, "quoteSell", [s.id, a]);
+    $("qOut").textContent = usd(formatUnits(out, 6), 4);
+    $("qFee").textContent = usd(formatUnits(fee, 6), 4);
+  }
+}
+
+function status(msg, hash) {
+  $("status").innerHTML = msg + (hash ? ` <a target="_blank" href="${CONFIG.explorer}/tx/${hash}">view tx</a>` : "");
+}
+
+async function connect() {
+  if (!window.ethereum) return status("No wallet found. Install MetaMask or Rabby.");
+  wallet = createWalletClient({ chain: arc, transport: custom(window.ethereum) });
+  [account] = await wallet.requestAddresses();
+  try { await wallet.switchChain({ id: arc.id }); }
+  catch { await wallet.addChain({ chain: arc }); }
+  $("connect").textContent = account.slice(0, 6) + "…" + account.slice(-4);
+  await refresh();
+}
+
+async function trade() {
+  const s = state.stocks[state.sel], a = amount();
+  if (!a) return status("Enter an amount.");
+  try {
+    $("go").disabled = true;
+    if (state.side === "buy") {
+      const allowance = await read(CONFIG.usdc, erc20Abi, "allowance", [account, CONFIG.market]);
+      if (allowance < a) {
+        status("Approving USDC…");
+        const h = await wallet.writeContract({ account, address: CONFIG.usdc, abi: erc20Abi, functionName: "approve", args: [CONFIG.market, maxUint256] });
+        await pub.waitForTransactionReceipt({ hash: h });
+      }
+      const [out] = await read(CONFIG.market, marketAbi, "quoteBuy", [s.id, a]);
+      status("Confirm the buy in your wallet…");
+      const h = await wallet.writeContract({ account, address: CONFIG.market, abi: marketAbi, functionName: "buy", args: [s.id, a, out * 99n / 100n] });
+      status("Buying…", h);
+      await pub.waitForTransactionReceipt({ hash: h });
+      status(`Bought a${s.ticker}.`, h);
+    } else {
+      const [out] = await read(CONFIG.market, marketAbi, "quoteSell", [s.id, a]);
+      status("Confirm the sell in your wallet…");
+      const h = await wallet.writeContract({ account, address: CONFIG.market, abi: marketAbi, functionName: "sell", args: [s.id, a, out * 99n / 100n] });
+      status("Selling…", h);
+      await pub.waitForTransactionReceipt({ hash: h });
+      status(`Sold a${s.ticker}.`, h);
+    }
+    $("amt").value = "";
+    await refresh(); quote();
+  } catch (e) {
+    status(e.shortMessage ?? e.message);
+  } finally { render(); }
+}
+
+$("connect").onclick = connect;
+$("go").onclick = trade;
+$("amt").oninput = quote;
+$("tabBuy").onclick = () => { state.side = "buy"; $("tabBuy").classList.add("on"); $("tabSell").classList.remove("on"); $("amt").value = ""; render(); quote(); };
+$("tabSell").onclick = () => { state.side = "sell"; $("tabSell").classList.add("on"); $("tabBuy").classList.remove("on"); $("amt").value = ""; render(); quote(); };
+window.ethereum?.on?.("accountsChanged", (a) => { account = a[0]; refresh(); });
+
+load().catch((e) => { $("rows").innerHTML = `<tr><td colspan="5" class="sub">Could not load markets: ${e.shortMessage ?? e.message}</td></tr>`; });
+setInterval(() => refresh().catch(() => {}), 15000);
+</script>
+</body>
+</html>
