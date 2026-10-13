@@ -10,7 +10,7 @@ stocks is slow, expensive or blocked.
 
 | | |
 |---|---|
-| Live app | `TODO` |
+| Live app | https://arcstocks.vercel.app |
 | StockMarket | `TODO` |
 | PriceOracle | `TODO` |
 | Network | Arc Mainnet (chain 5042) |
